@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // -------------------------------------------------------------------
 // 音效资源
