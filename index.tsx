@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { 
   Sparkles, 
@@ -9,11 +9,25 @@ import {
   CheckCircle2, 
   XCircle,
   Rocket,
-  Lightbulb
+  Lightbulb,
+  Volume2,
+  VolumeX,
+  Play
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// -------------------------------------------------------------------
+// 音效资源
+// -------------------------------------------------------------------
+const SOUND_URLS = {
+  click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+  correct: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
+  wrong: 'https://assets.mixkit.co/active_storage/sfx/2575/2575-preview.mp3',
+  win: 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3',
+  magic: 'https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3'
+};
 
 // -------------------------------------------------------------------
 // 数据定义
@@ -30,9 +44,68 @@ const COLORS = [
 // -------------------------------------------------------------------
 
 const App = () => {
+  const [hasStarted, setHasStarted] = useState(false);
   const [view, setView] = useState<'home' | 'study' | 'quiz' | 'ai'>('home');
   const [selectedNum, setSelectedNum] = useState<number | null>(null);
   const [stars, setStars] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // 预加载音效对象
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
+
+  useEffect(() => {
+    // 初始化并预加载所有音效
+    Object.entries(SOUND_URLS).forEach(([key, url]) => {
+      const audio = new Audio(url);
+      audio.preload = 'auto';
+      audioRefs.current[key] = audio;
+    });
+  }, []);
+
+  const playSound = (type: keyof typeof SOUND_URLS) => {
+    if (isMuted || !hasStarted) return;
+    const audio = audioRefs.current[type];
+    if (audio) {
+      // 重置播放位置以允许连续点击
+      audio.currentTime = 0;
+      audio.play().catch(err => {
+        console.warn(`音频播放失败 (${type}):`, err);
+      });
+    }
+  };
+
+  const handleStart = () => {
+    setHasStarted(true);
+    // 在用户点击时立即播放一个静音/极短的声音来“解锁”浏览器的音频策略
+    playSound('click');
+  };
+
+  const handleNavigate = (newView: typeof view, num?: number) => {
+    playSound('click');
+    setView(newView);
+    if (num !== undefined) setSelectedNum(num);
+  };
+
+  // 如果还没开始，显示启动页
+  if (!hasStarted) {
+    return (
+      <div className="fixed inset-0 bg-blue-500 flex flex-col items-center justify-center text-white p-6 text-center">
+        <div className="bg-white/20 p-8 rounded-full mb-8 animate-bounce">
+          <Rocket size={100} className="text-yellow-300" />
+        </div>
+        <h1 className="text-5xl font-kuaile mb-4">欢迎来到乘法小宇宙</h1>
+        <p className="text-xl mb-12 opacity-90">准备好开启你的数字冒险了吗？</p>
+        <button 
+          onClick={handleStart}
+          className="bg-yellow-400 hover:bg-yellow-300 text-blue-900 text-2xl font-bold px-12 py-6 rounded-full shadow-2xl transition-all transform hover:scale-110 flex items-center gap-4"
+        >
+          <Play size={32} fill="currentColor" />
+          点击进入
+        </button>
+        <p className="mt-8 text-sm opacity-60">点击进入后将自动开启声音效果</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8">
@@ -40,43 +113,60 @@ const App = () => {
       <header className="flex justify-between items-center mb-8">
         <div 
           className="flex items-center gap-2 cursor-pointer" 
-          onClick={() => { setView('home'); setSelectedNum(null); }}
+          onClick={() => handleNavigate('home')}
         >
           <div className="bg-yellow-400 p-2 rounded-xl shadow-lg">
             <Rocket className="text-white w-8 h-8" />
           </div>
           <h1 className="text-3xl font-kuaile text-blue-600 tracking-wider">乘法小宇宙</h1>
         </div>
-        <div className="bg-white px-4 py-2 rounded-full shadow-md flex items-center gap-2 border-2 border-yellow-200">
-          <Trophy className="text-yellow-500 w-5 h-5" />
-          <span className="font-bold text-blue-500 text-lg">{stars}</span>
+        
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => {
+              setIsMuted(!isMuted);
+              if (isMuted) playSound('click'); // 取消静音时给个反馈
+            }}
+            className="p-2 rounded-full bg-white shadow-md text-blue-500 hover:bg-blue-50 transition-colors"
+          >
+            {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
+          </button>
+          <div className="bg-white px-4 py-2 rounded-full shadow-md flex items-center gap-2 border-2 border-yellow-200">
+            <Trophy className="text-yellow-500 w-5 h-5" />
+            <span className="font-bold text-blue-500 text-lg">{stars}</span>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="min-h-[60vh]">
-        {view === 'home' && <HomeView onSelect={(n) => { setSelectedNum(n); setView('study'); }} />}
+        {view === 'home' && <HomeView onSelect={(n) => handleNavigate('study', n)} />}
         {view === 'study' && selectedNum && (
           <StudyView 
             num={selectedNum} 
-            onBack={() => setView('home')} 
-            onQuiz={() => setView('quiz')} 
+            onBack={() => handleNavigate('home')} 
+            onQuiz={() => handleNavigate('quiz')} 
           />
         )}
         {view === 'quiz' && selectedNum && (
           <QuizView 
             num={selectedNum} 
-            onBack={() => setView('study')} 
-            onWin={(s) => { setStars(prev => prev + s); setView('home'); }} 
+            playSound={playSound}
+            onBack={() => handleNavigate('study')} 
+            onWin={(s) => { 
+              playSound('win');
+              setStars(prev => prev + s); 
+              setView('home'); 
+            }} 
           />
         )}
-        {view === 'ai' && <AIView onBack={() => setView('home')} />}
+        {view === 'ai' && <AIView playSound={playSound} onBack={() => handleNavigate('home')} />}
       </main>
 
       {/* Floating AI Button */}
       {view !== 'ai' && (
         <button 
-          onClick={() => setView('ai')}
+          onClick={() => handleNavigate('ai')}
           className="fixed bottom-8 right-8 bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-full shadow-2xl transition-all transform hover:scale-110 flex items-center gap-2"
         >
           <MessageCircle size={28} />
@@ -143,7 +233,7 @@ const StudyView = ({ num, onBack, onQuiz }: { num: number; onBack: () => void; o
 };
 
 // --- 测试视图 ---
-const QuizView = ({ num, onBack, onWin }: { num: number; onBack: () => void; onWin: (s: number) => void }) => {
+const QuizView = ({ num, onBack, onWin, playSound }: { num: number; onBack: () => void; onWin: (s: number) => void; playSound: (t: keyof typeof SOUND_URLS) => void }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<'none' | 'correct' | 'wrong'>('none');
@@ -155,6 +245,7 @@ const QuizView = ({ num, onBack, onWin }: { num: number; onBack: () => void; onW
 
     const correct = parseInt(userAnswer) === num * currentStep;
     if (correct) {
+      playSound('correct');
       setFeedback('correct');
       setScore(s => s + 1);
       setTimeout(() => {
@@ -167,6 +258,7 @@ const QuizView = ({ num, onBack, onWin }: { num: number; onBack: () => void; onW
         }
       }, 1000);
     } else {
+      playSound('wrong');
       setFeedback('wrong');
       setTimeout(() => setFeedback('none'), 1500);
     }
@@ -226,7 +318,7 @@ const QuizView = ({ num, onBack, onWin }: { num: number; onBack: () => void; onW
 };
 
 // --- AI 助教视图 ---
-const AIView = ({ onBack }: { onBack: () => void }) => {
+const AIView = ({ onBack, playSound }: { onBack: () => void; playSound: (t: keyof typeof SOUND_URLS) => void }) => {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([
     { role: 'ai', text: '你好呀！我是乘法小精灵 ✨ 想知道关于乘法的什么小秘密吗？比如“为什么 2x3 等于 6”？' }
   ]);
@@ -242,6 +334,7 @@ const AIView = ({ onBack }: { onBack: () => void }) => {
     if (!input.trim() || loading) return;
     const userText = input;
     setInput('');
+    playSound('click');
     setMessages(prev => [...prev, { role: 'user', text: userText }]);
     setLoading(true);
 
@@ -253,6 +346,7 @@ const AIView = ({ onBack }: { onBack: () => void }) => {
           systemInstruction: "你是一个专门为6-10岁儿童设计的数学助教‘乘法小精灵’。你的回答要充满童趣，使用生动的比喻（比如用苹果、糖果、星星做例子）。解释要简单明了，字数控制在100字以内。要经常夸奖孩子。",
         }
       });
+      playSound('magic');
       setMessages(prev => [...prev, { role: 'ai', text: response.text || '哎呀，小精灵刚才开小差了，再问我一次好吗？' }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'ai', text: '网络星球有点拥挤，稍等一下再问我吧！' }]);
