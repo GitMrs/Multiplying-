@@ -16,17 +16,24 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
-// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+const getAIInstance = (apiKey: string) => {
+  if (!aiInstance) {
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+};
 
 // -------------------------------------------------------------------
 // 音效资源
 // -------------------------------------------------------------------
 const SOUND_URLS = {
-  click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
-  correct: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
-  wrong: 'https://assets.mixkit.co/active_storage/sfx/2575/2575-preview.mp3',
-  win: 'https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3',
-  magic: 'https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3'
+  click: '/static/2571-preview.mp3',
+  correct: '/static/1435-preview.wav',
+  wrong: '/static/2575-preview.mp3',
+  win: '/static/2013-preview.mp3',
+  magic: '/static/2018-preview.mp3'
 };
 
 // -------------------------------------------------------------------
@@ -45,10 +52,16 @@ const COLORS = [
 
 const App = () => {
   const [hasStarted, setHasStarted] = useState(false);
-  const [view, setView] = useState<'home' | 'study' | 'quiz' | 'ai'>('home');
+  const [view, setView] = useState<'home' | 'study' | 'quiz' | 'ai' | 'settings'>('home');
   const [selectedNum, setSelectedNum] = useState<number | null>(null);
   const [stars, setStars] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('ai_api_key') || '');
+
+  const handleSaveApiKey = (key: string) => {
+    setApiKey(key);
+    localStorage.setItem('ai_api_key', key);
+  };
 
   // 预加载音效对象
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
@@ -123,9 +136,16 @@ const App = () => {
         
         <div className="flex items-center gap-4">
           <button 
+            onClick={() => handleNavigate('settings')}
+            className="p-2 rounded-full bg-white shadow-md text-slate-500 hover:bg-blue-50 transition-colors"
+            title="设置"
+          >
+            ⚙️
+          </button>
+          <button 
             onClick={() => {
               setIsMuted(!isMuted);
-              if (isMuted) playSound('click'); // 取消静音时给个反馈
+              if (isMuted) playSound('click');
             }}
             className="p-2 rounded-full bg-white shadow-md text-blue-500 hover:bg-blue-50 transition-colors"
           >
@@ -160,7 +180,8 @@ const App = () => {
             }} 
           />
         )}
-        {view === 'ai' && <AIView playSound={playSound} onBack={() => handleNavigate('home')} />}
+        {view === 'ai' && <AIView playSound={playSound} onBack={() => handleNavigate('home')} apiKey={apiKey} />}
+        {view === 'settings' && <SettingsView apiKey={apiKey} onSave={handleSaveApiKey} onBack={() => handleNavigate('home')} />}
       </main>
 
       {/* Floating AI Button */}
@@ -234,22 +255,32 @@ const StudyView = ({ num, onBack, onQuiz }: { num: number; onBack: () => void; o
 
 // --- 测试视图 ---
 const QuizView = ({ num, onBack, onWin, playSound }: { num: number; onBack: () => void; onWin: (s: number) => void; playSound: (t: keyof typeof SOUND_URLS) => void }) => {
-  const [currentStep, setCurrentStep] = useState(1);
+  const [questionOrder] = useState(() => {
+    const order = Array.from({ length: 9 }, (_, i) => i + 1);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order;
+  });
+  const [currentStep, setCurrentStep] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<'none' | 'correct' | 'wrong'>('none');
   const [score, setScore] = useState(0);
+
+  const currentMultiplier = questionOrder[currentStep];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userAnswer) return;
 
-    const correct = parseInt(userAnswer) === num * currentStep;
+    const correct = parseInt(userAnswer) === num * currentMultiplier;
     if (correct) {
       playSound('correct');
       setFeedback('correct');
       setScore(s => s + 1);
       setTimeout(() => {
-        if (currentStep < 9) {
+        if (currentStep < 8) {
           setCurrentStep(s => s + 1);
           setUserAnswer('');
           setFeedback('none');
@@ -270,10 +301,10 @@ const QuizView = ({ num, onBack, onWin, playSound }: { num: number; onBack: () =
         <div className="w-full bg-slate-200 rounded-full h-4 mb-4">
           <div 
             className="bg-green-400 h-4 rounded-full transition-all duration-500" 
-            style={{ width: `${(currentStep / 9) * 100}%` }}
+            style={{ width: `${((currentStep + 1) / 9) * 100}%` }}
           ></div>
         </div>
-        <p className="text-slate-500 font-bold">第 {currentStep} / 9 题</p>
+        <p className="text-slate-500 font-bold">第 {currentStep + 1} / 9 题</p>
       </div>
 
       <div className="bg-white rounded-3xl p-10 shadow-2xl text-center relative overflow-hidden">
@@ -289,7 +320,7 @@ const QuizView = ({ num, onBack, onWin, playSound }: { num: number; onBack: () =
         )}
 
         <h3 className="text-5xl font-kuaile mb-10 text-slate-700">
-          {num} × {currentStep} = ?
+          {num} × {currentMultiplier} = ?
         </h3>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -318,7 +349,7 @@ const QuizView = ({ num, onBack, onWin, playSound }: { num: number; onBack: () =
 };
 
 // --- AI 助教视图 ---
-const AIView = ({ onBack, playSound }: { onBack: () => void; playSound: (t: keyof typeof SOUND_URLS) => void }) => {
+const AIView = ({ onBack, playSound, apiKey }: { onBack: () => void; playSound: (t: keyof typeof SOUND_URLS) => void; apiKey: string }) => {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([
     { role: 'ai', text: '你好呀！我是乘法小精灵 ✨ 想知道关于乘法的什么小秘密吗？比如“为什么 2x3 等于 6”？' }
   ]);
@@ -332,6 +363,10 @@ const AIView = ({ onBack, playSound }: { onBack: () => void; playSound: (t: keyo
 
   const askAI = async () => {
     if (!input.trim() || loading) return;
+    if (!apiKey) {
+      setMessages(prev => [...prev, { role: 'ai', text: '请先在设置中配置 API Key 才能使用小精灵哦！' }]);
+      return;
+    }
     const userText = input;
     setInput('');
     playSound('click');
@@ -339,11 +374,15 @@ const AIView = ({ onBack, playSound }: { onBack: () => void; playSound: (t: keyo
     setLoading(true);
 
     try {
+      const ai = getAIInstance(apiKey);
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: userText,
         config: {
           systemInstruction: "你是一个专门为6-10岁儿童设计的数学助教‘乘法小精灵’。你的回答要充满童趣，使用生动的比喻（比如用苹果、糖果、星星做例子）。解释要简单明了，字数控制在100字以内。要经常夸奖孩子。",
+          httpOptions:  {
+              baseUrl: 'http://xui.labelchat.dpdns.org:3000/v1beta/models/gemini-3-flash-preview:generateContent',
+          }
         }
       });
       playSound('magic');
@@ -396,6 +435,60 @@ const AIView = ({ onBack, playSound }: { onBack: () => void; playSound: (t: keyo
           className="bg-blue-500 text-white px-6 rounded-xl font-bold disabled:opacity-50"
         >
           发送
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- 设置视图 ---
+const SettingsView = ({ apiKey, onSave, onBack }: { apiKey: string; onSave: (key: string) => void; onBack: () => void }) => {
+  const [inputKey, setInputKey] = useState(apiKey);
+  const [showKey, setShowKey] = useState(false);
+
+  const handleSave = () => {
+    onSave(inputKey);
+    onBack();
+  };
+
+  return (
+    <div className="max-w-md mx-auto bounce-in">
+      <div className="flex justify-between items-center mb-6">
+        <button onClick={onBack} className="flex items-center gap-2 text-blue-600 font-bold hover:underline">
+          <ArrowLeft size={20} /> 返回
+        </button>
+        <h2 className="text-2xl font-kuaile text-blue-600">设置</h2>
+        <div className="w-20"></div>
+      </div>
+
+      <div className="bg-white rounded-3xl p-8 shadow-xl border-4 border-blue-100">
+        <div className="mb-6">
+          <label className="block text-lg font-bold text-slate-700 mb-3">API Key</label>
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={inputKey}
+              onChange={(e) => setInputKey(e.target.value)}
+              placeholder="请输入你的 API Key"
+              className="w-full p-4 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-400 pr-12"
+            />
+            <button
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              {showKey ? '🙈' : '👁️'}
+            </button>
+          </div>
+          <p className="text-sm text-slate-500 mt-2">
+            API Key 将保存在本地浏览器中，不会上传到服务器
+          </p>
+        </div>
+
+        <button
+          onClick={handleSave}
+          className="w-full bg-blue-500 text-white py-4 rounded-xl text-xl font-bold shadow-lg hover:bg-blue-600 active:transform active:scale-95 transition-all"
+        >
+          保存
         </button>
       </div>
     </div>
