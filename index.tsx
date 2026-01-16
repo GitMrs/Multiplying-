@@ -351,15 +351,52 @@ const QuizView = ({ num, onBack, onWin, playSound }: { num: number; onBack: () =
 // --- AI 助教视图 ---
 const AIView = ({ onBack, playSound, apiKey }: { onBack: () => void; playSound: (t: keyof typeof SOUND_URLS) => void; apiKey: string }) => {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([
-    { role: 'ai', text: '你好呀！我是乘法小精灵 ✨ 想知道关于乘法的什么小秘密吗？比如“为什么 2x3 等于 6”？' }
+    { role: 'ai', text: '你好呀！我是乘法小精灵 ✨ 想知道关于乘法的什么小秘密吗？比如"为什么 2x3 等于 6"？' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
+
+  const speakText = (text: string, index: number) => {
+    if ('speechSynthesis' in window) {
+      if (speakingIndex === index) {
+        speechSynthesis.cancel();
+        setSpeakingIndex(null);
+        return;
+      }
+      
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'zh-CN';
+      utterance.rate = 0.9;
+      utterance.pitch = 1.3;
+      
+      const voices = speechSynthesis.getVoices();
+      const childFriendlyVoice = voices.find(voice => 
+        voice.lang.includes('zh') && 
+        (voice.name.includes('Female') || 
+         voice.name.includes('女') || 
+         voice.name.includes('Xiaoxiao') ||
+         voice.name.includes('Xiaoyi') ||
+         voice.name.includes('Huihui'))
+      ) || voices.find(voice => voice.lang.includes('zh'));
+      
+      if (childFriendlyVoice) {
+        utterance.voice = childFriendlyVoice;
+      }
+      
+      utterance.onend = () => setSpeakingIndex(null);
+      utterance.onerror = () => setSpeakingIndex(null);
+      
+      setSpeakingIndex(index);
+      speechSynthesis.speak(utterance);
+    }
+  };
 
   const askAI = async () => {
     if (!input.trim() || loading) return;
@@ -410,7 +447,22 @@ const AIView = ({ onBack, playSound, apiKey }: { onBack: () => void; playSound: 
             <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm ${
               m.role === 'user' ? 'bg-blue-500 text-white rounded-tr-none' : 'bg-white border text-slate-700 rounded-tl-none'
             }`}>
-              {m.text}
+              <div className="flex items-start gap-2">
+                <div className="flex-1">{m.text}</div>
+                <button
+                  onClick={() => speakText(m.text, i)}
+                  className={`flex-shrink-0 p-1 rounded-full transition-all ${
+                    speakingIndex === i 
+                      ? 'bg-green-500 text-white animate-pulse' 
+                      : m.role === 'user' 
+                        ? 'text-white/70 hover:bg-white/20' 
+                        : 'text-slate-400 hover:bg-slate-100'
+                  }`}
+                  title={speakingIndex === i ? '停止朗读' : '朗读'}
+                >
+                  {speakingIndex === i ? '🔊' : '🔇'}
+                </button>
+              </div>
             </div>
           </div>
         ))}
