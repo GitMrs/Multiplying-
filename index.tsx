@@ -29,11 +29,11 @@ const getAIInstance = (apiKey: string) => {
 // 音效资源
 // -------------------------------------------------------------------
 const SOUND_URLS = {
-  click: '/static/2571-preview.mp3',
-  correct: '/static/1435-preview.wav',
-  wrong: '/static/2575-preview.mp3',
-  win: '/static/2013-preview.mp3',
-  magic: '/static/2018-preview.mp3'
+  click: '/2571-preview.mp3',
+  correct: '/1435-preview.wav',
+  wrong: '/2575-preview.mp3',
+  win: '/2013-preview.mp3',
+  magic: '/2018-preview.mp3'
 };
 
 // -------------------------------------------------------------------
